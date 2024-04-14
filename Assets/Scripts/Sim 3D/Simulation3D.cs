@@ -1,5 +1,5 @@
-using UnityEngine;
 using Unity.Mathematics;
+using UnityEngine;
 
 public class Simulation3D : MonoBehaviour
 {
@@ -10,7 +10,9 @@ public class Simulation3D : MonoBehaviour
     public bool fixedTimeStep;
     public int iterationsPerFrame;
     public float gravity = -10;
-    [Range(0, 1)] public float collisionDamping = 0.05f;
+
+    [Range(0, 1)]
+    public float collisionDamping = 0.05f;
     public float smoothingRadius = 0.2f;
     public float targetDensity;
     public float pressureMultiplier;
@@ -46,6 +48,11 @@ public class Simulation3D : MonoBehaviour
     bool pauseNextFrame;
     Spawner3D.SpawnData spawnData;
 
+    [Header("Interactive Objects")]
+    public Transform interactiveSphere;
+    private Vector3 sphereVelocity;
+    private ComputeBuffer sphereVelocityBuffer;
+
     void Start()
     {
         Debug.Log("Controls: Space = Play/Pause, R = Reset");
@@ -69,18 +76,69 @@ public class Simulation3D : MonoBehaviour
         SetInitialBufferData(spawnData);
 
         // Init compute
-        ComputeHelper.SetBuffer(compute, positionBuffer, "Positions", externalForcesKernel, updatePositionsKernel);
-        ComputeHelper.SetBuffer(compute, predictedPositionsBuffer, "PredictedPositions", externalForcesKernel, spatialHashKernel, densityKernel, pressureKernel, viscosityKernel, updatePositionsKernel);
-        ComputeHelper.SetBuffer(compute, spatialIndices, "SpatialIndices", spatialHashKernel, densityKernel, pressureKernel, viscosityKernel);
-        ComputeHelper.SetBuffer(compute, spatialOffsets, "SpatialOffsets", spatialHashKernel, densityKernel, pressureKernel, viscosityKernel);
-        ComputeHelper.SetBuffer(compute, densityBuffer, "Densities", densityKernel, pressureKernel, viscosityKernel);
-        ComputeHelper.SetBuffer(compute, velocityBuffer, "Velocities", externalForcesKernel, pressureKernel, viscosityKernel, updatePositionsKernel);
+        ComputeHelper.SetBuffer(
+            compute,
+            positionBuffer,
+            "Positions",
+            externalForcesKernel,
+            updatePositionsKernel
+        );
+        ComputeHelper.SetBuffer(
+            compute,
+            predictedPositionsBuffer,
+            "PredictedPositions",
+            externalForcesKernel,
+            spatialHashKernel,
+            densityKernel,
+            pressureKernel,
+            viscosityKernel,
+            updatePositionsKernel
+        );
+        ComputeHelper.SetBuffer(
+            compute,
+            spatialIndices,
+            "SpatialIndices",
+            spatialHashKernel,
+            densityKernel,
+            pressureKernel,
+            viscosityKernel
+        );
+        ComputeHelper.SetBuffer(
+            compute,
+            spatialOffsets,
+            "SpatialOffsets",
+            spatialHashKernel,
+            densityKernel,
+            pressureKernel,
+            viscosityKernel
+        );
+        ComputeHelper.SetBuffer(
+            compute,
+            densityBuffer,
+            "Densities",
+            densityKernel,
+            pressureKernel,
+            viscosityKernel
+        );
+        ComputeHelper.SetBuffer(
+            compute,
+            velocityBuffer,
+            "Velocities",
+            externalForcesKernel,
+            pressureKernel,
+            viscosityKernel,
+            updatePositionsKernel
+        );
+
+        // Initialize the sphere velocity buffer
+        sphereVelocityBuffer = new ComputeBuffer(1, sizeof(float) * 3);
+        sphereVelocityBuffer.SetData(new[] { sphereVelocity });
+        compute.SetBuffer(externalForcesKernel, "SphereVelocity", sphereVelocityBuffer);
 
         compute.SetInt("numParticles", positionBuffer.count);
 
         gpuSort = new();
         gpuSort.SetBuffers(spatialIndices, spatialOffsets);
-
 
         // Init display
         display.Init(this);
@@ -97,8 +155,6 @@ public class Simulation3D : MonoBehaviour
 
     void Update()
     {
-        // Run simulation if not in fixed timestep mode
-        // (skip running for first few frames as timestep can be a lot higher than usual)
         if (!fixedTimeStep && Time.frameCount > 10)
         {
             RunSimulationFrame(Time.deltaTime);
@@ -109,9 +165,41 @@ public class Simulation3D : MonoBehaviour
             isPaused = true;
             pauseNextFrame = false;
         }
+
         floorDisplay.transform.localScale = new Vector3(1, 1 / transform.localScale.y * 0.1f, 1);
 
+        if (interactiveSphere != null)
+        {
+            sphereVelocity += Physics.gravity * Time.deltaTime;
+            Vector3 newPosition = interactiveSphere.position + sphereVelocity * Time.deltaTime;
+
+            // Check for collisions
+            ResolveSphereCollisionInUnity(ref newPosition, ref sphereVelocity);
+
+            interactiveSphere.position = newPosition;  // update position after collision resolution
+
+            // Set the updated sphere's position and velocity in the compute shader
+            compute.SetVector("spherePosition", new Vector4(newPosition.x, newPosition.y, newPosition.z, 0));
+            compute.SetFloat("sphereRadius", interactiveSphere.localScale.x * 0.5f);
+            Debug.Log("Sphere Position: " + newPosition);
+        }
+
         HandleInput();
+    }
+
+    void ResolveSphereCollisionInUnity(ref Vector3 position, ref Vector3 velocity)
+    {
+        float radius = interactiveSphere.localScale.x * 0.5f;
+
+        // Assuming the floor is a horizontal plane at y = 0 or at its own y position
+        float floorY = floorDisplay.transform.position.y + (floorDisplay.transform.localScale.y * 0.5f);
+
+        // Check for collision with the floor
+        if (position.y - radius < floorY)
+        {
+            position.y = floorY + radius;
+            velocity.y = -velocity.y * collisionDamping * 0.8f;
+        }
     }
 
     void RunSimulationFrame(float frameTime)
@@ -139,7 +227,6 @@ public class Simulation3D : MonoBehaviour
         ComputeHelper.Dispatch(compute, positionBuffer.count, kernelIndex: pressureKernel);
         ComputeHelper.Dispatch(compute, positionBuffer.count, kernelIndex: viscosityKernel);
         ComputeHelper.Dispatch(compute, positionBuffer.count, kernelIndex: updatePositionsKernel);
-
     }
 
     void UpdateSettings(float deltaTime)
@@ -194,7 +281,15 @@ public class Simulation3D : MonoBehaviour
 
     void OnDestroy()
     {
-        ComputeHelper.Release(positionBuffer, predictedPositionsBuffer, velocityBuffer, densityBuffer, spatialIndices, spatialOffsets);
+        ComputeHelper.Release(
+            positionBuffer,
+            predictedPositionsBuffer,
+            velocityBuffer,
+            densityBuffer,
+            spatialIndices,
+            spatialOffsets,
+            sphereVelocityBuffer
+        );
     }
 
     void OnDrawGizmos()
@@ -205,6 +300,5 @@ public class Simulation3D : MonoBehaviour
         Gizmos.color = new Color(0, 1, 0, 0.5f);
         Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
         Gizmos.matrix = m;
-
     }
 }

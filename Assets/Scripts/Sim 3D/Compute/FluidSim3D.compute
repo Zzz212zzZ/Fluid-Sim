@@ -41,6 +41,12 @@ const float2 interactionInputPoint;
 const float interactionInputStrength;
 const float interactionInputRadius;
 
+float3 spherePosition;
+float sphereRadius;
+
+float3 sphereVelocity;
+
+
 float PressureFromDensity(float density)
 {
 	return (density - targetDensity) * pressureMultiplier;
@@ -83,6 +89,60 @@ void ResolveCollisions(uint particleIndex)
 	Velocities[particleIndex] = mul(localToWorld, float4(velocityLocal, 0)).xyz;
 
 }
+
+void ResolveSphereCollision(uint particleIndex)
+{
+    float3 particlePosition = Positions[particleIndex];
+    float3 dirToParticle = particlePosition - spherePosition;
+    float distToParticle = length(dirToParticle);
+    float penetrationDepth = sphereRadius - distToParticle;
+
+    if (penetrationDepth > 0)
+    {
+        // Particle is inside the sphere, push it out
+        float3 penetrationDir = dirToParticle / distToParticle; // Normalized direction
+        float3 correction = penetrationDir * penetrationDepth;
+        Positions[particleIndex] += correction;
+
+        // Reflect velocity
+        float3 velocity = Velocities[particleIndex];
+        Velocities[particleIndex] = reflect(velocity, penetrationDir) * (1 - collisionDamping);
+    }
+
+	 // Now, let's consider the sphere's collision with the container
+    // First, convert the sphere's position to local space
+    float3 spherePosLocal = mul(worldToLocal, float4(spherePosition, 1)).xyz;
+
+    // Perform collision detection and resolution for the sphere with the container
+    const float3 halfSize = 0.5; // Half the size of the container, assuming it's centered at the origin
+    float3 edgeDst = halfSize - abs(spherePosLocal);
+
+
+    if (edgeDst.x < sphereRadius)
+    {
+        spherePosLocal.x = sign(spherePosLocal.x) * (halfSize.x + sphereRadius);
+        sphereVelocity.x *= -1 * collisionDamping;
+    }
+    if (edgeDst.y < sphereRadius)
+    {
+        spherePosLocal.y = sign(spherePosLocal.y) * (halfSize.y + sphereRadius);
+        sphereVelocity.y *= -1 * collisionDamping;
+    }
+    if (edgeDst.z < sphereRadius)
+    {
+        spherePosLocal.z = sign(spherePosLocal.z) * (halfSize.z + sphereRadius);
+        sphereVelocity.z *= -1 * collisionDamping;
+    }
+
+    // Convert the sphere's local position back to world space
+    spherePosition = mul(localToWorld, float4(spherePosLocal, 1)).xyz;
+
+    // Update the sphere's velocity (sphereVelocity would need to be a global property or passed in)
+    sphereVelocity = mul(localToWorld, float4(sphereVelocity, 0)).xyz;
+
+
+}
+
 
 [numthreads(NumThreads,1,1)]
 void ExternalForces (uint3 id : SV_DispatchThreadID)
@@ -275,5 +335,6 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 	if (id.x >= numParticles) return;
 
 	Positions[id.x] += Velocities[id.x] * deltaTime;
+	ResolveSphereCollision(id.x); // Add this line
 	ResolveCollisions(id.x);
 }
