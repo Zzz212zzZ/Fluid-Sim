@@ -181,7 +181,9 @@ public class Simulation3D : MonoBehaviour
             // Set the updated sphere's position and velocity in the compute shader
             compute.SetVector("spherePosition", new Vector4(newPosition.x, newPosition.y, newPosition.z, 0));
             compute.SetFloat("sphereRadius", interactiveSphere.localScale.x * 0.5f);
-            Debug.Log("Sphere Position: " + newPosition);
+            // Debug the magnitude of the sphere's velocity
+            Debug.Log("Sphere Velocity: " + sphereVelocity.magnitude);
+            
         }
 
         HandleInput();
@@ -198,7 +200,12 @@ public class Simulation3D : MonoBehaviour
         if (position.y - radius < floorY)
         {
             position.y = floorY + radius;
-            velocity.y = -velocity.y * collisionDamping * 0.8f;
+            velocity.y = -velocity.y * collisionDamping * 0.5f;
+        }
+        // when the velocity is very small, stop the sphere from moving
+        if (Mathf.Abs(velocity.y) < 0.01f)
+        {
+            velocity.y = 0;
         }
     }
 

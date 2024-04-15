@@ -92,21 +92,36 @@ void ResolveCollisions(uint particleIndex)
 
 void ResolveSphereCollision(uint particleIndex)
 {
-    float3 particlePosition = Positions[particleIndex];
+    // float3 particlePosition = Positions[particleIndex];
+    // float3 dirToParticle = particlePosition - spherePosition;
+    // float distToParticle = length(dirToParticle);
+    // float penetrationDepth = sphereRadius - distToParticle;
+	float3 particlePosition = Positions[particleIndex];
+	// the extended SphereRadius is related to the sphere's speed, when almost static, the radius should be the same as the sphere's radius
+	float extendedSphereRadius = sphereRadius;  // Default to normal radius
+	float speed = length(sphereVelocity);  // Calculate the speed of the sphere
+
+	if (speed >= 0) {
+		extendedSphereRadius = sphereRadius * 1.5;  // Increase the radius if the sphere is moving faster
+	}
+
+
     float3 dirToParticle = particlePosition - spherePosition;
     float distToParticle = length(dirToParticle);
-    float penetrationDepth = sphereRadius - distToParticle;
+    float penetrationDepth = extendedSphereRadius - distToParticle;
 
     if (penetrationDepth > 0)
     {
-        // Particle is inside the sphere, push it out
-        float3 penetrationDir = dirToParticle / distToParticle; // Normalized direction
-        float3 correction = penetrationDir * penetrationDepth;
+        float3 penetrationDir = normalize(dirToParticle);
+        float sphereSpeed = length(sphereVelocity);
+        float dynamicRepulsionFactor = max(20, sphereSpeed * 0.5); // Scale repulsion with speed
+        float3 correction = penetrationDir * penetrationDepth * dynamicRepulsionFactor;
         Positions[particleIndex] += correction;
 
-        // Reflect velocity
+        // Increase velocity change based on the sphere's speed
+        float velocityAmplification = max(20, sphereSpeed * 0.75);
         float3 velocity = Velocities[particleIndex];
-        Velocities[particleIndex] = reflect(velocity, penetrationDir) * (1 - collisionDamping);
+        Velocities[particleIndex] = reflect(velocity, penetrationDir) * (1 - collisionDamping) * velocityAmplification;
     }
 
 	 // Now, let's consider the sphere's collision with the container
@@ -140,6 +155,11 @@ void ResolveSphereCollision(uint particleIndex)
     // Update the sphere's velocity (sphereVelocity would need to be a global property or passed in)
     sphereVelocity = mul(localToWorld, float4(sphereVelocity, 0)).xyz;
 
+	// when the velocity is too low, we stop the sphere
+	if (length(sphereVelocity) < 0.01)
+	{
+		sphereVelocity = float3(0, 0, 0);
+	}
 
 }
 
