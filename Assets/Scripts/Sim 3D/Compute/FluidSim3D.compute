@@ -102,9 +102,15 @@ void ResolveSphereCollision(uint particleIndex)
 	float extendedSphereRadius = sphereRadius;  // Default to normal radius
 	float speed = length(sphereVelocity);  // Calculate the speed of the sphere
 
-	if (speed >= 1) {
-		extendedSphereRadius = sphereRadius * 1.4;  // Increase the radius if the sphere is moving faster
+	if (speed >= 10) {
+		extendedSphereRadius = sphereRadius * (1 + 0.02 * speed);  // Increase the radius if the sphere is moving faster
 	}
+	// if (speed >= 10) {
+	// 	extendedSphereRadius = sphereRadius * 1.3;  // Increase the radius if the sphere is moving faster
+	// }
+	// else{
+	// 	extendedSphereRadius = sphereRadius;  // Default to normal radius
+	// }
 
 
     float3 dirToParticle = particlePosition - spherePosition;
