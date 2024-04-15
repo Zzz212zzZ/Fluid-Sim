@@ -133,7 +133,7 @@ public class Simulation3D : MonoBehaviour
         // Initialize the sphere velocity buffer
         sphereVelocityBuffer = new ComputeBuffer(1, sizeof(float) * 3);
         sphereVelocityBuffer.SetData(new[] { sphereVelocity });
-        compute.SetBuffer(externalForcesKernel, "SphereVelocity", sphereVelocityBuffer);
+        compute.SetBuffer(updatePositionsKernel, "SphereVelocity", sphereVelocityBuffer);
 
         compute.SetInt("numParticles", positionBuffer.count);
 
@@ -176,14 +176,19 @@ public class Simulation3D : MonoBehaviour
             // Check for collisions
             ResolveSphereCollisionInUnity(ref newPosition, ref sphereVelocity);
 
-            interactiveSphere.position = newPosition;  // update position after collision resolution
+            interactiveSphere.position = newPosition; // update position after collision resolution
 
             // Set the updated sphere's position and velocity in the compute shader
-            compute.SetVector("spherePosition", new Vector4(newPosition.x, newPosition.y, newPosition.z, 0));
+            compute.SetVector(
+                "spherePosition",
+                new Vector4(newPosition.x, newPosition.y, newPosition.z, 0)
+            );
             compute.SetFloat("sphereRadius", interactiveSphere.localScale.x * 0.5f);
             // Debug the magnitude of the sphere's velocity
+            sphereVelocityBuffer.SetData(new[] { sphereVelocity });
+            // Set buffer for all kernels that use it
+            compute.SetBuffer(updatePositionsKernel, "SphereVelocity", sphereVelocityBuffer);
             Debug.Log("Sphere Velocity: " + sphereVelocity.magnitude);
-            
         }
 
         HandleInput();
@@ -194,7 +199,8 @@ public class Simulation3D : MonoBehaviour
         float radius = interactiveSphere.localScale.x * 0.5f;
 
         // Assuming the floor is a horizontal plane at y = 0 or at its own y position
-        float floorY = floorDisplay.transform.position.y + (floorDisplay.transform.localScale.y * 0.5f);
+        float floorY =
+            floorDisplay.transform.position.y + (floorDisplay.transform.localScale.y * 0.5f);
 
         // Check for collision with the floor
         if (position.y - radius < floorY)

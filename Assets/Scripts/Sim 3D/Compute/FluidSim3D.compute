@@ -18,6 +18,8 @@ RWStructuredBuffer<float3> Velocities;
 RWStructuredBuffer<float2> Densities; // Density, Near Density
 RWStructuredBuffer<uint3> SpatialIndices; // used for spatial hashing
 RWStructuredBuffer<uint> SpatialOffsets; // used for spatial hashing
+// Declare a buffer that matches the layout in Unity
+RWStructuredBuffer<float3> SphereVelocity;  // Correct type
 
 // Settings
 const uint numParticles;
@@ -43,7 +45,6 @@ const float interactionInputRadius;
 
 float3 spherePosition;
 float sphereRadius;
-
 float3 sphereVelocity;
 
 
@@ -101,8 +102,8 @@ void ResolveSphereCollision(uint particleIndex)
 	float extendedSphereRadius = sphereRadius;  // Default to normal radius
 	float speed = length(sphereVelocity);  // Calculate the speed of the sphere
 
-	if (speed >= 0) {
-		extendedSphereRadius = sphereRadius * 1.5;  // Increase the radius if the sphere is moving faster
+	if (speed >= 1) {
+		extendedSphereRadius = sphereRadius * 1.4;  // Increase the radius if the sphere is moving faster
 	}
 
 
@@ -355,6 +356,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 	if (id.x >= numParticles) return;
 
 	Positions[id.x] += Velocities[id.x] * deltaTime;
+	sphereVelocity = SphereVelocity[0];
 	ResolveSphereCollision(id.x); // Add this line
 	ResolveCollisions(id.x);
 }
